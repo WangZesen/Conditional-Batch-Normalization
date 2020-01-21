@@ -105,7 +105,6 @@ class Generator(tf.keras.Model):
 		self.layer_stack.append(tf.keras.layers.Reshape([7, 7, 256]))
 		self.layer_stack.append(GResBlock(128))
 		self.layer_stack.append(GResBlock(128))
-		self.layer_stack.append(GResBlock(128, upsample = False))
 		self.layer_stack.append(SN(tf.keras.layers.Conv2DTranspose(1, 5, 1, 'same', activation = tf.nn.tanh, name = 'out1')))
 
 	def call(self, x, c, train = True):
@@ -122,11 +121,11 @@ class Discriminator(tf.keras.Model):
 	def __init__(self, **kwargs):
 		super(Discriminator, self).__init__(**kwargs)
 		self.layer_stack = []
-		self.layer_stack.append(SN(tf.keras.layers.Conv2D(64, 5, 1, 'same', activation = tf.nn.leaky_relu, name = 'conv1')))
+		self.layer_stack.append(SN(tf.keras.layers.Conv2D(128, 5, 1, 'same', activation = tf.nn.leaky_relu, name = 'conv1')))
 		# self.layer_stack.append(ConditionalShift(64, name = 'cs1'))
-		self.layer_stack.append(SN(tf.keras.layers.Conv2D(64, 5, 2, 'same', activation = tf.nn.leaky_relu, name = 'conv2')))
+		self.layer_stack.append(SN(tf.keras.layers.Conv2D(128, 5, 2, 'same', activation = tf.nn.leaky_relu, name = 'conv2')))
 		# self.layer_stack.append(ConditionalShift(64, name = 'cs2'))
-		self.layer_stack.append(SN(tf.keras.layers.Conv2D(64, 5, 2, 'same', activation = tf.nn.leaky_relu, name = 'conv3')))
+		self.layer_stack.append(SN(tf.keras.layers.Conv2D(128, 5, 2, 'same', activation = tf.nn.leaky_relu, name = 'conv3')))
 		
 		# self.layer_stack.append(global_sum_pooling)
 		self.layer_stack.append(tf.keras.layers.Flatten())
