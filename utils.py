@@ -3,7 +3,7 @@ import tensorflow as tf
 def get_dataset(FLAGS):
 	(train_images, train_labels), _ = tf.keras.datasets.mnist.load_data()
 	train_images = train_images.reshape(train_images.shape[0], 28, 28, 1).astype('float32')
-	train_images = (train_images - 127.5)
+	train_images = (train_images - 127.5) / 255.0
 	train_labels = tf.one_hot(train_labels, depth = FLAGS.N_CLASS, dtype = tf.float32)
 	train_dataset = tf.data.Dataset.from_tensor_slices((train_images, train_labels)).shuffle(60000).batch(FLAGS.BATCH_SIZE, drop_remainder = True)
 	return train_dataset

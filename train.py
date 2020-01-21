@@ -1,48 +1,40 @@
 import tensorflow as tf
-from model import Generator, Discriminator
+from model import Generator, Discriminator # , Generator_v1, Discriminator_v1
 from utils import get_dataset
 import os
 
 def train(FLAGS):
 
-	@tf.function
+	# @tf.function
 	def gen_train_one_step():
-		z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], 0., 1.)
+		z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], -1., 1.)
 		fake_labels = tf.one_hot(tf.random.uniform([FLAGS.BATCH_SIZE], maxval = FLAGS.N_CLASS, dtype = tf.int32), depth = FLAGS.N_CLASS, dtype = tf.float32)
 
 		with tf.GradientTape() as tape:
 			tape.watch(generator.trainable_variables)
-			fake_samples = generator(z, fake_labels)
-			fake_logits = discriminator(fake_samples, fake_labels)
+			fake_samples = generator(z, fake_labels, train = True)
+			fake_logits = discriminator(fake_samples, fake_labels, train = False)
 			gen_loss = - tf.reduce_mean(fake_logits)
 			gradient = tape.gradient(gen_loss, generator.trainable_variables)
 
 		gen_opt.apply_gradients(zip(gradient, generator.trainable_variables))
 
-	@tf.function
+	# @tf.function
 	def dis_train_one_step(real_samples, real_labels):
-		z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], 0., 1.)
+		z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], -1., 1.)
 		fake_labels = real_labels
 
 		with tf.GradientTape() as tape:
 			tape.watch(discriminator.trainable_variables)
 
-			fake_samples = generator(z, fake_labels)
-			real_logits = discriminator(real_samples, real_labels)
-			fake_logits = discriminator(fake_samples, fake_labels)
+			fake_samples = generator(z, fake_labels, train = False)
 
-			alpha = tf.random.uniform([FLAGS.BATCH_SIZE, 1, 1, 1])
-			inter_samples = fake_samples * alpha + real_samples * (1 - alpha)
-			with tf.GradientTape() as gp_tape:
-				gp_tape.watch(inter_samples)
-				inter_logits = discriminator(inter_samples, real_labels)
-				gp_gradient = gp_tape.gradient(inter_logits, inter_samples)
-			gp_gradient_norm = tf.sqrt(tf.reduce_sum(tf.square(gp_gradient), axis = [1, 2, 3]))
-			gradient_penalty = tf.reduce_mean((gp_gradient_norm - 1.) ** 2) * FLAGS.GRADIENT_PENALTY_LAMBDA
+			real_logits = discriminator(real_samples, real_labels, train = False)
+			fake_logits = discriminator(fake_samples, fake_labels, train = True)
 
+			dis_loss = tf.reduce_mean(tf.maximum(1 - real_logits, 0)) + tf.reduce_mean(tf.maximum(1 + fake_logits, 0))
 			gen_loss = - tf.reduce_mean(fake_logits)
-			dis_loss = - tf.reduce_mean(real_logits) + tf.reduce_mean(fake_logits) + gradient_penalty
-			adv_loss = - tf.reduce_mean(real_logits) + tf.reduce_mean(fake_logits)
+			adv_loss = tf.reduce_mean(fake_logits) - tf.reduce_mean(real_logits)
 
 			gradient = tape.gradient(dis_loss, discriminator.trainable_variables)
 
@@ -51,7 +43,7 @@ def train(FLAGS):
 		dis_metric(dis_loss)
 		adv_metric(adv_loss)
 
-	def logging(step):
+	def logging(step, real_samples):
 		with writer.as_default():
 			tf.summary.scalar('adv_loss', adv_metric.result(), step = step)
 			tf.summary.scalar('gen_loss', gen_metric.result(), step = step)
@@ -60,10 +52,17 @@ def train(FLAGS):
 			gen_metric.reset_states()
 			dis_metric.reset_states()
 
-			z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], 0., 1.)
-			fake_labels = tf.one_hot(tf.random.uniform([FLAGS.BATCH_SIZE], maxval = FLAGS.N_CLASS, dtype = tf.int32), depth = FLAGS.N_CLASS)
-			fake_samples = generator(z, fake_labels)
-			tf.summary.image('fake_samples', (fake_samples + 1) / 2, step = step, max_outputs = 10)
+			z = tf.random.uniform([FLAGS.BATCH_SIZE, FLAGS.NOISE_DIM], -1., 1.)
+			# fake_labels = tf.one_hot(tf.random.uniform([FLAGS.BATCH_SIZE], maxval = FLAGS.N_CLASS, dtype = tf.int32), depth = FLAGS.N_CLASS)
+			fake_labels = tf.one_hot(tf.range(FLAGS.BATCH_SIZE, dtype = tf.int32) % 10, depth = 10, dtype = tf.float32)
+			fake_samples = generator(z, fake_labels, train = False)
+			tf.summary.image('fake_samples', (fake_samples + 1) / 2, step = step, max_outputs = 9)
+			tf.summary.image('real_samples', (real_samples + 1) / 2, step = step, max_outputs = 9)
+
+			def diff(x):
+				return tf.math.abs(x[0] - x[1])
+			# tf.summary.histogram('dis_weight', diff(discriminator.layer_stack[3].linear_gamma.weights[0]), step = step)
+			# tf.summary.histogram('gen_weight', diff(generator.layer_stack[2].cBN1.linear_gamma.weights[0]), step = step)
 
 			writer.flush()
 
@@ -109,7 +108,7 @@ def train(FLAGS):
 				gen_train_one_step()
 
 			if chkpt.step % FLAGS.LOG_INTERVAL == 0:
-				logging(chkpt.step)
+				logging(chkpt.step, sample)
 
 			if chkpt.step % FLAGS.CHECKPOINT_INTERVAL == 0:
 				manager.save(checkpoint_number = chkpt.step)
